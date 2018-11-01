@@ -1,5 +1,5 @@
 #!/bin/sh
-# (c) 2017 Gautam Mani <execve@gmail.com>
+# (c) 2017,2018 Gautam Mani <execve@gmail.com>
 # Backup all the key configuration of a system - both system and user specific
 # and compress and encrypt using gpg. This could be then backed up off-site for
 # safe-keeping. This could also be backed up automatically on a weekly or daily
@@ -11,27 +11,30 @@
 #	+ configure disks from the user and create gpart disk backups
 # 	+ Add some zfs details
 
-MYUSER="ex"
+MYUSER="gautam"
 GPGKEY="0x679D8D13"
 
 PATH=$PATH:/usr/sbin:/usr/local/bin:/usr/bin
+# command to list installed packages
+PKGVER_CMD="pkg info"
 PARTSHOW_CMD="gpart show"
-# gpg; homedir is passed to handle the wierd situation when run from periodic that the home dir was / instead of /root!
-GPG="gpg2 --homedir /root/.gnupg"
+# gpg
+GPG="gpg --homedir /root/.gnupg"
 # configure system dirs to backup here
-SYSFILES2BAK="/etc/resolv.conf /etc/hosts /etc/fstab  /etc/rc.conf /etc/crontab /etc/ntpd.conf /boot/loader.conf /etc/sysctl.conf "
+SYSFILES2BAK="/etc/resolv.conf /etc/hosts /etc/fstab  /etc/rc.conf /etc/periodic.conf /etc/periodic.conf.local /etc/crontab /boot/loader.conf /etc/sysctl.conf "
 # configure system files to backup here
-SYSDIRS2BAK="/etc /usr/local/etc "
+SYSDIRS2BAK="/etc /usr/local/etc /var/cron/tabs "
 # users who should be backed up
 USERS2BAK="root $MYUSER"
 # directories of users which should be backed up
-USERDIRS2BAK=".ssh .gnupg .mutt .vim .scid "
+USERDIRS2BAK=".ssh .gnupg .mutt .vim .scid bin .tarsnap "
 # files of users which should be backed up
-USERFILES2BAK=".bashrc .bash_profile .bash_logout .profile .cshrc .vimrc .gitconfig .mail_aliases .bash_aliases .tmux.conf .muttrc .screenrc .xscreensaver "
+USERFILES2BAK=".bashrc .bash_profile .bash_logout .profile .cshrc .vimrc .gitconfig .mail_aliases .bash_aliases .tmux.conf .muttrc .screenrc .xscreensaver .zshrc .zprofile "
 TMPBACKUP=`mktemp -d /tmp/mkbackup_XXXXXXXX`
 FINALBAKDIR=/var/backups
 BAKFNAME=mkbackup
 DEBUG=0
+MKBACKUPVER="0.2a"
 
 umask 077
 
@@ -51,7 +54,7 @@ cleanup()
 	exit 1
 }
 
-echo "Backup started: " `date`
+echo "Backup (v$MKBACKUPVER) started: " `date`
 mkdir -p "$TMPBACKUP"
 if [ "$?" -ne "0" ]; then
 	logger -- "$0: Unable to create $TMPBACKUP"
@@ -83,9 +86,10 @@ mount > "$TMPBACKUP"/mounts
 mkdir -p "$TMPBACKUP"/sys "$TMPBACKUP"/users
 
 log running pkg and gpart info 
-# command to list only manually installed packages instead of the automatically installed as well. 
-pkg query -a '%n:%v:%a' | grep 0$ > "$TMPBACKUP"/pkg.lst
-${PARTSHOW_CMD} > "$TMPBACKUP"/gpartshow.lst
+${PKGVER_CMD} > "$TMPBACKUP"/pkg.lst
+# only for FreeBSD
+pkg query -a '%n:%v:%a' | grep 0$ > "$TMPBACKUP"/pkgauto-FBSD.lst
+${PARTSHOW_CMD} > "$TMPBACKUP"/parted.lst
 
 log "sysfiles..."
 # now sysfiles to backup/sys
@@ -146,4 +150,5 @@ fi
 
 tar -C "$TMPBACKUP" -cf - . | $GPG -e -r $GPGKEY | bzip2 > "$FINALBAKDIR"/$BAKFNAME".bz2"
 
+#cleanup the tmp backup dir
 echo "Backup finished: " `date`
